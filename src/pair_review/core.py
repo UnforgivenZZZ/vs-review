@@ -248,6 +248,69 @@ def decide(root: str | Path, proposal_id: str, hunk_id: str, decision: str) -> d
     return current_state
 
 
+def activity_path(root: str | Path, proposal_id: str) -> Path:
+    return safe(root, f".pair-review/activity/{proposal_id}.json", True)
+
+
+def activity(root: str | Path, proposal_id: str) -> list[dict[str, Any]]:
+    load(root, proposal_id)
+    try:
+        document = json.loads(activity_path(root, proposal_id).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    _assert(document.get("version") == 1 and document.get("proposal") == proposal_id and isinstance(document.get("events"), list), "Invalid activity")
+    return document["events"]
+
+
+def clear_activity(root: str | Path, proposal_id: str, hunk: str, agent: str, thread_id: str | None = None) -> list[dict[str, Any]]:
+    events = activity(root, proposal_id)
+    remaining = [
+        event
+        for event in events
+        if not (event["agent"] == agent and event["hunk"] == hunk and event.get("threadId") == thread_id)
+    ]
+    if len(remaining) != len(events):
+        json_write(activity_path(root, proposal_id), {"version": 1, "proposal": proposal_id, "events": remaining})
+    return remaining
+
+
+def progress(
+    root: str | Path,
+    proposal_id: str,
+    summary: str,
+    hunk: str = "general",
+    thread_id: str | None = None,
+    agent: str = "qwen-code",
+) -> dict[str, Any]:
+    proposal = load(root, proposal_id)
+    _assert(isinstance(summary, str) and bool(summary.strip()) and len(summary) <= 4_000, "Progress summary must contain 1–4000 characters")
+    _assert(isinstance(agent, str) and bool(agent.strip()) and len(agent) <= 100, "Invalid agent name")
+    if thread_id is not None:
+        parent = next((item for item in feedback(root, proposal_id)["comments"] if item.get("threadId") == thread_id), None)
+        _assert(parent is not None, "Unknown published thread")
+        hunk = parent["hunk"]
+    else:
+        _assert(hunk == "general" or any(item["id"] == hunk for item in proposal["hunks"]), "Unknown hunk")
+    events = activity(root, proposal_id)
+    previous = next(
+        (event for event in events if event["agent"] == agent and event["hunk"] == hunk and event.get("threadId") == thread_id),
+        None,
+    )
+    event = {
+        "id": previous["id"] if previous else str(uuid.uuid4()),
+        "proposal": proposal_id,
+        "hunk": hunk,
+        "threadId": thread_id,
+        "agent": agent,
+        "summary": summary,
+        "at": _now(),
+    }
+    remaining = [item for item in events if item["id"] != event["id"]]
+    remaining.append(event)
+    json_write(activity_path(root, proposal_id), {"version": 1, "proposal": proposal_id, "events": remaining})
+    return event
+
+
 def comment(root: str | Path, proposal_id: str, hunk: str, body: str, author: str = "reviewer", line: int | None = None) -> dict[str, Any]:
     proposal = load(root, proposal_id)
     _assert(hunk == "general" or any(item["id"] == hunk for item in proposal["hunks"]), "Unknown hunk")
@@ -255,6 +318,7 @@ def comment(root: str | Path, proposal_id: str, hunk: str, body: str, author: st
     _assert(line is None or (isinstance(line, int) and not isinstance(line, bool) and 1 <= line <= len(split_lines(proposal["after"]))), "Invalid proposed line")
     item = {"id": str(uuid.uuid4()), "proposal": proposal_id, "hunk": hunk, "line": line, "body": body, "author": author, "at": _now()}
     json_write(safe(root, f".pair-review/comments/{proposal_id}/{item['id']}.json", True), item)
+    clear_activity(root, proposal_id, hunk, author)
     return item
 
 
@@ -476,4 +540,5 @@ def reply_thread(root: str | Path, proposal_id: str, thread_id: str, body: str, 
         "at": _now(),
     }
     json_write(safe(root, f".pair-review/comments/{proposal_id}/{item['id']}.json", True), item)
+    clear_activity(root, proposal_id, parent["hunk"], author, thread_id)
     return item

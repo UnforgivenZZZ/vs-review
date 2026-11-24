@@ -19,7 +19,7 @@ async def _exercise(workspace: Path):
         async with ClientSession(read, write) as session:
             await session.initialize()
             tools = await session.list_tools()
-            assert {tool.name for tool in tools.tools} == {"propose", "feedback", "wait", "reply", "reply_thread"}
+            assert {tool.name for tool in tools.tools} == {"propose", "feedback", "wait", "progress", "clear_progress", "reply", "reply_thread"}
             candidate = workspace / ".pair-review/candidates/a.txt"
             candidate.parent.mkdir(parents=True)
             candidate.write_text("new", encoding="utf-8")
@@ -37,11 +37,18 @@ async def _exercise(workspace: Path):
             core.comment(workspace, proposal["id"], "h1", "Please explain", "reviewer")
             update = await session.call_tool("wait", {"proposal_id": proposal["id"], "timeout": 0, "since": revision})
             assert update.structuredContent["waitStatus"] == "update"
+            thinking = await session.call_tool(
+                "progress",
+                {"proposal_id": proposal["id"], "hunk": "h1", "summary": "Checking the API contract", "agent": "pytest"},
+            )
+            assert thinking.structuredContent["summary"] == "Checking the API contract"
+            assert core.activity(workspace, proposal["id"])[0]["hunk"] == "h1"
             replied = await session.call_tool(
                 "reply",
                 {"proposal_id": proposal["id"], "hunk": "h1", "body": "Explanation", "agent": "pytest"},
             )
             assert replied.structuredContent["author"] == "pytest"
+            assert core.activity(workspace, proposal["id"]) == []
             inline = core.save_inline_draft(
                 workspace,
                 proposal["id"],
@@ -49,11 +56,16 @@ async def _exercise(workspace: Path):
                 "Inline question",
             )
             core.submit_review(workspace, proposal["id"], f"thread:{inline['threadId']}")
+            await session.call_tool(
+                "progress",
+                {"proposal_id": proposal["id"], "thread_id": inline["threadId"], "summary": "Reading the quoted code", "agent": "pytest"},
+            )
             threaded = await session.call_tool(
                 "reply_thread",
                 {"proposal_id": proposal["id"], "thread_id": inline["threadId"], "body": "Inline answer", "agent": "pytest"},
             )
             assert threaded.structuredContent["threadId"] == inline["threadId"]
+            assert core.activity(workspace, proposal["id"]) == []
             outside = await session.call_tool("propose", {"target": "a.txt", "candidate": "/outside/candidate"})
             assert outside.isError
 

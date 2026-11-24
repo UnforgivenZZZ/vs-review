@@ -70,6 +70,24 @@ def wait(proposal_id: str, timeout: float = 60, since: str | None = None, next_o
 
 
 @mcp.tool()
+def progress(
+    proposal_id: str,
+    summary: str,
+    hunk: str = "general",
+    thread_id: str | None = None,
+    agent: str = "qwen-code",
+) -> dict[str, Any]:
+    """Publish a short reasoning/progress summary without changing review feedback or source files."""
+    return core.progress(root(), proposal_id, summary, hunk, thread_id, agent)
+
+
+@mcp.tool()
+def clear_progress(proposal_id: str, hunk: str = "general", thread_id: str | None = None, agent: str = "qwen-code") -> dict[str, Any]:
+    """Clear an unfinished summary when no formal reply will be sent."""
+    return {"events": core.clear_activity(root(), proposal_id, hunk, agent, thread_id)}
+
+
+@mcp.tool()
 def reply(proposal_id: str, hunk: str, body: str, agent: str = "qwen-code") -> dict[str, Any]:
     """Reply to a hunk or general discussion; use reply_thread for inline discussions."""
     return core.comment(root(), proposal_id, hunk, body, agent)

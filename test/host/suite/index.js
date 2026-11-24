@@ -8,7 +8,7 @@ const {spawnSync}=require('node:child_process');
 const project=process.env.PAIR_REVIEW_PROJECT_ROOT,root=process.env.PAIR_REVIEW_HOST_WORKSPACE,uv=process.env.PAIR_REVIEW_UV_PATH;
 function python(script,...args){
  const result=spawnSync(uv,['run','--project',project,'python','-c',script,...args],{cwd:root,encoding:'utf8'});
- assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout);
+ assert.equal(result.status,0,result.stderr);return result.stdout.trim()?JSON.parse(result.stdout):null;
 }
 async function waitFor(predicate,message,timeout=20000){
  const deadline=Date.now()+timeout;
@@ -40,6 +40,11 @@ async function run(){
  const {PythonBridge}=require(path.join(extension.extensionPath,'vscode','bridge.js'));
  const bridge=new PythonBridge(extension.extensionPath,root,uv,message=>console.log(message));
  try{
+  const threadId=review.comments[0].threadId;
+  python('import sys; from pair_review import core; core.progress(".",sys.argv[1],"Checking the real host",thread_id=sys.argv[2],agent="host-test")',proposal.id,threadId);
+  await waitFor(async()=>{const live=await bridge.request('reviewState',{id:proposal.id});return live.activity.some(event=>event.summary==='Checking the real host')},'installed host did not publish live activity');
+  python('import sys; from pair_review import core; core.reply_thread(".",sys.argv[1],sys.argv[2],"Final host answer","host-test")',proposal.id,threadId);
+  await waitFor(async()=>{const live=await bridge.request('reviewState',{id:proposal.id});return live.activity.length===0&&live.feedback.comments.some(comment=>comment.body==='Final host answer')},'formal reply did not clear live activity');
   await bridge.request('draft',{id:proposal.id,hunk:'h1',value:{decision:'accepted',body:'Accept from installed bridge'}});
   assert.equal(fs.readFileSync(path.join(root,'a.txt'),'utf8'),'one\ntwo\nthree\nfour\n');
   await bridge.request('submitReview',{id:proposal.id,scope:'h1'});

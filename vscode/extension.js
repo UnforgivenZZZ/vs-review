@@ -82,30 +82,31 @@ function activate(context){
      sourceColumn=editor.viewColumn;
     };
     panel.webview.options={enableScripts:true,localResourceRoots:[]};
-    let lastReview=await bridge.request('reviewState',{id}),lastFeedback=lastReview.feedback,lastInline=JSON.stringify(lastReview.inlineDrafts||{}),refreshing=false;
+    const liveSignature=review=>JSON.stringify({inlineDrafts:review.inlineDrafts||{},activity:review.activity||[]});
+    let lastReview=await bridge.request('reviewState',{id}),lastFeedback=lastReview.feedback,lastInline=liveSignature(lastReview),refreshing=false;
     panel.title=`Review: ${initial.path}`;panel.webview.html=initial.html;
     const refresh=async()=>{
      if(disposed||refreshing)return;refreshing=true;
      try{
-      const review=await bridge.request('reviewState',{id}),nextFeedback=review.feedback,inlineDrafts=review.inlineDrafts||{},signature=JSON.stringify(inlineDrafts);
+      const review=await bridge.request('reviewState',{id}),nextFeedback=review.feedback,inlineDrafts=review.inlineDrafts||{},signature=liveSignature(review);
       if(nextFeedback.revision===lastFeedback.revision&&signature===lastInline)return;
       lastInline=signature;
       const known=new Set(lastFeedback.comments.map(comment=>comment.id));
       const replies=nextFeedback.comments.filter(comment=>!known.has(comment.id)&&comment.author!=='reviewer');
       lastReview=review;lastFeedback=nextFeedback;changed.fire(resolved);
-      panel.webview.postMessage({type:'update',feedback:nextFeedback,inlineDrafts});
+      panel.webview.postMessage({type:'update',feedback:nextFeedback,inlineDrafts,activity:review.activity||[]});
       if(replies.length)vscode.window.showInformationMessage(`Pair Review: ${replies.at(-1).author} replied on ${initial.path}`);
      }catch(error){panel.webview.postMessage({type:'error',message:error.message})}finally{refreshing=false}
     };
-    const updates=vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder,`.pair-review/{state/${id}.json,comments/${id}/*.json}`));
+    const updates=vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder,`.pair-review/{state/${id}.json,comments/${id}/*.json,activity/${id}.json}`));
     updates.onDidCreate(refresh);updates.onDidChange(refresh);
     const poll=setInterval(refresh,1500);timers.add(poll);
     const onInline=inlineChanged.event(event=>{if(event.root===root&&event.id===id)refresh()});
     const onSubmitted=inlineSubmitted.event(async event=>{
      if(event.root!==root||event.id!==id)return;
      try{
-      lastReview=event.reviewState||await bridge.request('reviewState',{id});lastFeedback=lastReview.feedback;lastInline=JSON.stringify(lastReview.inlineDrafts||{});
-      panel.webview.postMessage({type:'submitted',scope:event.scope,feedback:lastFeedback,inlineDrafts:lastReview.inlineDrafts||{}});changed.fire(resolved);
+      lastReview=event.reviewState||await bridge.request('reviewState',{id});lastFeedback=lastReview.feedback;lastInline=liveSignature(lastReview);
+      panel.webview.postMessage({type:'submitted',scope:event.scope,feedback:lastFeedback,inlineDrafts:lastReview.inlineDrafts||{},activity:lastReview.activity||[]});changed.fire(resolved);
      }catch(error){panel.webview.postMessage({type:'error',message:error.message})}
     });
     const receive=panel.webview.onDidReceiveMessage(async message=>{
@@ -115,7 +116,7 @@ function activate(context){
       else if(message.type==='discard')await bridge.request('discard',{id,hunk:message.hunk});
       else if(message.type==='sendComment'){
        const result=await bridge.request('sendComment',{id,hunk:message.hunk,value:message.value});lastReview=result;lastFeedback=result.feedback;
-       panel.webview.postMessage({type:'commentSent',hunk:message.hunk,feedback:result.feedback,draft:result.draft||null});
+       panel.webview.postMessage({type:'commentSent',hunk:message.hunk,feedback:result.feedback,draft:result.draft||null,activity:result.activity||[]});
       }else if(message.type==='submitReview'){
        await inline?.assertReady(root,id);
        const target=path.resolve(root,initial.path);
@@ -124,8 +125,8 @@ function activate(context){
         if(message.scope!=='all'&&message.scope!==hunk)throw new Error('Draft outside selected scope');
         await bridge.request('draft',{id,hunk,value});
        }
-       const result=await bridge.request('submitReview',{id,scope:message.scope});lastReview=result;lastFeedback=result.feedback;lastInline=JSON.stringify(result.inlineDrafts||{});
-       panel.webview.postMessage({type:'submitted',scope:message.scope,feedback:result.feedback,inlineDrafts:result.inlineDrafts||{}});
+       const result=await bridge.request('submitReview',{id,scope:message.scope});lastReview=result;lastFeedback=result.feedback;lastInline=liveSignature(result);
+       panel.webview.postMessage({type:'submitted',scope:message.scope,feedback:result.feedback,inlineDrafts:result.inlineDrafts||{},activity:result.activity||[]});
        await inline?.refresh(root,id);changed.fire(resolved);
       }else if(message.type==='refresh')await refresh();
       else if(message.type==='source'){

@@ -5,7 +5,7 @@ description: Use Pair Review when the user asks for proposal-first coding, candi
 
 # Pair Review
 
-Submit complete candidates through the `pair-review` MCP server for review in the user's current VS Code window. The available MCP tools are `propose`, `feedback`, `wait`, `reply`, and `reply_thread`.
+Submit complete candidates through the `pair-review` MCP server for review in the user's current VS Code window. The available MCP tools are `propose`, `feedback`, `wait`, `progress`, `clear_progress`, `reply`, and `reply_thread`.
 
 ## Propose one logical change
 
@@ -26,7 +26,9 @@ A candidate's existence is not authorization. Keep source files unchanged until 
 ## Reply and revise
 
 - When a comment contains `threadId`, call `reply_thread` to respond in the exact discussion. Use `side`, `startLine`, `endLine`, and `quotedCode` to understand its code location. Use `reply` for panel hunks or the general discussion.
-- Answer questions first, then decide whether a new candidate is needed. After replying, read `feedback` again for the new revision and continue waiting. Your own replies are not new user tasks.
+- While preparing a response, call `progress` with a short user-facing reasoning or work summary for the same hunk or thread. Update that summary as your understanding advances. Share concise hypotheses, checks, and next steps rather than hidden chain-of-thought or private internal reasoning.
+- Send the completed response through `reply` or `reply_thread`; a successful formal reply automatically hides its corresponding progress summary. If you stop without replying, call `clear_progress` for that scope so the UI does not show a stale thinking state.
+- Answer questions first, then decide whether a new candidate is needed. After replying, read `feedback` again for the new revision and continue waiting. Your own replies and progress events are not new user tasks.
 - For a revision, reread the current source, create a new complete candidate, and call `propose`. Identify the superseded proposal in the title and remind the user to review the new proposal rather than accepting an outdated one. Keep old proposals and their discussions independent.
 - When multiple proposals remain active, poll each proposal's `feedback` in turn so questions in older threads are not missed.
 

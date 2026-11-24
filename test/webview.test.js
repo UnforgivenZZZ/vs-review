@@ -82,3 +82,31 @@ test('Send comment leaves Accept and all other drafts private',t=>{
  assert.equal(x.document.getElementById('body-h1').value,'');assert.equal(x.document.getElementById('body-h2').value,'Private question');
  assert.match(x.document.getElementById('status-h1').textContent,/Draft: accepted/);
 });
+
+test('file changes share one file group and diff action lives on the file bar',t=>{
+ const x=setup(t);
+ assert.equal(x.document.querySelectorAll('.file-group').length,1);
+ assert.equal(x.document.querySelectorAll('.file-group[data-file="example.ts"] .change-card').length,3);
+ assert.equal(x.document.querySelectorAll('.file-header button[data-action="diff"]').length,1);
+ assert.equal(x.document.querySelectorAll('.toolbar button[data-action="diff"]').length,0);
+ assert.doesNotMatch(x.document.querySelector('.file-body').textContent,/h[123] · original/);
+ assert.match(x.document.querySelector('.change-header').textContent,/Change 1 of 2/);
+});
+
+test('speaker cards have distinct roles and thinking disappears after the formal reply',t=>{
+ const x=setup(t);x.input('h2','Keep my draft');const field=x.document.getElementById('body-h2');field.focus();
+ const reviewer={id:'review-1',hunk:'h1',body:'Please explain this',author:'reviewer',at:'2026-11-24'};
+ x.update({type:'update',feedback:{...x.feedback,comments:[reviewer]},activity:[{id:'work-1',hunk:'h1',agent:'qwen',summary:'Checking the call graph'}]});
+ const thinking=x.document.getElementById('activity-work-1');
+ assert.equal(thinking.dataset.role,'agent-thinking');assert.match(thinking.textContent,/Checking the call graph/);
+ assert.equal(x.document.getElementById('comment-review-1').dataset.role,'reviewer');
+ x.update({type:'update',feedback:{...x.feedback,comments:[reviewer]},activity:[{id:'work-1',hunk:'h1',agent:'qwen',summary:'Preparing the answer'}]});
+ assert.match(x.document.getElementById('activity-work-1').textContent,/Preparing the answer/);assert.equal(x.document.activeElement,field);
+ const agent={id:'reply-1',hunk:'h1',body:'The call stays in the provider',author:'qwen',at:'2026-11-24'};
+ x.update({type:'update',feedback:{...x.feedback,comments:[reviewer,agent]},activity:[]});
+ assert.equal(x.document.getElementById('activity-work-1'),null);
+ assert.equal(x.document.getElementById('comment-reply-1').dataset.role,'agent');
+ assert.equal(field.value,'Keep my draft');assert.deepEqual(x.errors,[]);
+ const css=x.document.querySelector('style').textContent;
+ assert.ok(css.includes('.comment.reviewer'));assert.ok(css.includes('.comment.agent'));assert.ok(css.includes('border-left-width: 4px'));
+});

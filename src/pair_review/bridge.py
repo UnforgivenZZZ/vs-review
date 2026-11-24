@@ -26,6 +26,7 @@ class ReviewBridge:
             "feedback": core.feedback(self.root, proposal_id),
             "drafts": current_state.get("drafts", {}),
             "inlineDrafts": current_state.get("inlineDrafts", {}),
+            "activity": core.activity(self.root, proposal_id),
         }
 
     def handle(self, method: str, params: dict[str, Any]) -> Any:
@@ -42,7 +43,7 @@ class ReviewBridge:
                     {"id": hunk["id"], "start": hunk["start"], "end": hunk["end"], "added": len(core.split_lines(hunk["text"]))}
                     for hunk in proposal["hunks"]
                 ],
-                "html": render_html(proposal, current_state, current_feedback),
+                "html": render_html(proposal, current_state, current_feedback, core.activity(self.root, proposal_id)),
             }
         if method == "snapshot":
             proposal = self._proposal(proposal_id)
