@@ -273,3 +273,44 @@ def test_inline_reply_clears_only_the_matching_thread_activity(workspace: Path):
     remaining = core.activity(workspace, proposal["id"])
     assert len(remaining) == 1
     assert remaining[0]["hunk"] == "general"
+
+
+def test_revision_refreshes_same_proposal_and_preserves_all_discussion(workspace: Path):
+    proposal = core.submit(workspace, "a.txt", "ONE\ntwo\nthree\nFOUR\n")
+    core.draft(workspace, proposal["id"], "h1", {"decision": "accepted", "body": "First review"})
+    core.submit_review(workspace, proposal["id"], "h1")
+    assert core.read_text(workspace / "a.txt") == "ONE\ntwo\nthree\nfour\n"
+    core.comment(workspace, proposal["id"], "h1", "First reply", "qwen")
+    inline = core.save_inline_draft(workspace, proposal["id"], {"side": "proposed", "startLine": 1, "endLine": 1}, "Inline review")
+    core.submit_review(workspace, proposal["id"], f"thread:{inline['threadId']}")
+    core.reply_thread(workspace, proposal["id"], inline["threadId"], "Inline reply", "qwen")
+    previous_feedback = core.feedback(workspace, proposal["id"])
+    revised = core.revise(workspace, proposal["id"], "ONE\ntwo\nTHREE\nfour\nFIVE\n")
+    assert revised["id"] == proposal["id"]
+    assert revised["proposalRevision"] == 2
+    assert revised["refreshed"] is True
+    assert len(list((workspace / ".pair-review/proposals").glob("*.dff"))) == 1
+    result = core.feedback(workspace, proposal["id"])
+    assert result["proposalRevision"] == 2
+    assert len(result["comments"]) == len(previous_feedback["comments"]) == 4
+    assert {comment["body"] for comment in result["comments"]} == {"First review", "First reply", "Inline review", "Inline reply"}
+    assert all(comment["proposalRevision"] == 1 for comment in result["comments"])
+    assert all(hunk["status"] == "pending" for hunk in result["hunks"])
+    current = core.load(workspace, proposal["id"])
+    assert current["before"] == "ONE\ntwo\nthree\nfour\n"
+    archive = json.loads(core.revision_path(workspace, proposal["id"], 1).read_text(encoding="utf-8"))
+    assert archive["proposal"]["after"] == "ONE\ntwo\nthree\nFOUR\n"
+    assert archive["state"]["decisions"] == {"h1": "accepted"}
+    core.comment(workspace, proposal["id"], "general", "Second review", "reviewer")
+    assert core.feedback(workspace, proposal["id"])["comments"][-1]["proposalRevision"] == 2
+
+
+def test_revision_write_recovers_if_state_update_was_interrupted(workspace: Path):
+    proposal = core.submit(workspace, "a.txt", "new")
+    current_state = core.state(workspace, core.load(workspace, proposal["id"]))
+    archive = {"proposalRevision": 1, "proposal": core.load(workspace, proposal["id"]), "state": current_state, "archivedAt": "now"}
+    core.json_write(core.revision_path(workspace, proposal["id"], 1), archive)
+    updated = {**core.load(workspace, proposal["id"]), "proposalRevision": 2, "after": "revised"}
+    core.json_write(workspace / ".pair-review/proposals" / f"{proposal['id']}.dff", updated)
+    assert core.feedback(workspace, proposal["id"])["proposalRevision"] == 2
+    assert core.state(workspace, core.load(workspace, proposal["id"]))["decisions"] == {}

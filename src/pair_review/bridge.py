@@ -23,6 +23,7 @@ class ReviewBridge:
         proposal = self._proposal(proposal_id)
         current_state = core.state(self.root, proposal)
         return {
+            "proposalRevision": core.proposal_revision(proposal),
             "feedback": core.feedback(self.root, proposal_id),
             "drafts": current_state.get("drafts", {}),
             "inlineDrafts": current_state.get("inlineDrafts", {}),
@@ -37,6 +38,7 @@ class ReviewBridge:
             current_feedback = core.feedback(self.root, proposal_id)
             return {
                 "id": proposal_id,
+                "proposalRevision": core.proposal_revision(proposal),
                 "path": proposal["path"],
                 "language": language(proposal["path"]),
                 "hunks": [

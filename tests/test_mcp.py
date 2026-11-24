@@ -19,7 +19,7 @@ async def _exercise(workspace: Path):
         async with ClientSession(read, write) as session:
             await session.initialize()
             tools = await session.list_tools()
-            assert {tool.name for tool in tools.tools} == {"propose", "feedback", "wait", "progress", "clear_progress", "reply", "reply_thread"}
+            assert {tool.name for tool in tools.tools} == {"propose", "revise", "feedback", "wait", "progress", "clear_progress", "reply", "reply_thread"}
             candidate = workspace / ".pair-review/candidates/a.txt"
             candidate.parent.mkdir(parents=True)
             candidate.write_text("new", encoding="utf-8")
@@ -66,6 +66,12 @@ async def _exercise(workspace: Path):
             )
             assert threaded.structuredContent["threadId"] == inline["threadId"]
             assert core.activity(workspace, proposal["id"]) == []
+            candidate.write_text("revised", encoding="utf-8")
+            revised = await session.call_tool("revise", {"proposal_id": proposal["id"], "candidate": ".pair-review/candidates/a.txt"})
+            assert revised.structuredContent["id"] == proposal["id"]
+            assert revised.structuredContent["proposalRevision"] == 2
+            history = await session.call_tool("feedback", {"proposal_id": proposal["id"]})
+            assert len(history.structuredContent["comments"]) == 4
             outside = await session.call_tool("propose", {"target": "a.txt", "candidate": "/outside/candidate"})
             assert outside.isError
 
