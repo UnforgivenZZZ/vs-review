@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pair-review-mcp"
+version = "0.4.0"
+description = "Python MCP and review engine for Pair Review"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+  "mcp>=1.12,<2",
+  "Pygments>=2.19,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+]
+
+[project.scripts]
+pair-review-mcp = "pair_review.mcp_server:main"
+pair-review-bridge = "pair_review.bridge:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pair_review"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

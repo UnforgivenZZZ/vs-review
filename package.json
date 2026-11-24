@@ -1,0 +1,97 @@
+{
+  "name": "pair-review-mcp",
+  "displayName": "Pair Review MCP",
+  "description": "Review terminal agent proposals through a Python MCP engine.",
+  "version": "0.4.0",
+  "publisher": "local-pair-review",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=18"
+  },
+  "main": "./vscode/extension.js",
+  "categories": ["Other"],
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "capabilities": {
+    "untrustedWorkspaces": {"supported": false},
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {"command": "pairReview.open", "title": "Pair Review: Open Proposal"},
+      {"command": "pairReview.addInlineDraft", "title": "Add to review", "enablement": "!commentIsEmpty"},
+      {"command": "pairReview.submitInlineThread", "title": "Submit this thread"},
+      {"command": "pairReview.submitInlineReview", "title": "Submit all reviews"},
+      {"command": "pairReview.editInlineDraft", "title": "Edit draft", "icon": "$(edit)"},
+      {"command": "pairReview.saveInlineDraft", "title": "Save draft"},
+      {"command": "pairReview.cancelInlineEdit", "title": "Cancel edit"},
+      {"command": "pairReview.deleteInlineDraft", "title": "Delete draft", "icon": "$(trash)"},
+      {"command": "pairReview.sendInlineComment", "title": "Send comment", "icon": "$(send)"}
+    ],
+    "customEditors": [{
+      "viewType": "pairReview.proposal",
+      "displayName": "Pair Review",
+      "selector": [{"filenamePattern": "*.dff"}],
+      "priority": "default"
+    }],
+    "configuration": {
+      "title": "Pair Review",
+      "properties": {
+        "pairReview.autoOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open new proposals and their full proposed source in the current VS Code window."
+        },
+        "pairReview.previewMode": {
+          "type": "string",
+          "enum": ["diff", "source"],
+          "default": "diff",
+          "description": "Open each new proposal as a complete native diff or a full proposed source file."
+        },
+        "pairReview.uvPath": {
+          "type": "string",
+          "default": "uv",
+          "description": "Path to the uv executable used to run the Python review engine."
+        }
+      }
+    },
+    "menus": {
+      "commandPalette": [
+        {"command": "pairReview.addInlineDraft", "when": "false"},
+        {"command": "pairReview.submitInlineThread", "when": "false"},
+        {"command": "pairReview.submitInlineReview", "when": "false"},
+        {"command": "pairReview.editInlineDraft", "when": "false"},
+        {"command": "pairReview.saveInlineDraft", "when": "false"},
+        {"command": "pairReview.cancelInlineEdit", "when": "false"},
+        {"command": "pairReview.deleteInlineDraft", "when": "false"},
+        {"command": "pairReview.sendInlineComment", "when": "false"}
+      ],
+      "comments/commentThread/context": [
+        {"command": "pairReview.addInlineDraft", "group": "inline@1", "when": "commentController == pair-review"},
+        {"command": "pairReview.sendInlineComment", "group": "inline@1.5", "when": "commentController == pair-review && !commentIsEmpty"},
+        {"command": "pairReview.submitInlineThread", "group": "inline@2", "when": "commentController == pair-review && commentThread == pairReviewDraftThread"},
+        {"command": "pairReview.submitInlineReview", "group": "inline@3", "when": "commentController == pair-review && !commentThreadIsEmpty"}
+      ],
+      "comments/comment/title": [
+        {"command": "pairReview.editInlineDraft", "group": "inline@1", "when": "commentController == pair-review && comment == pairReviewDraftComment"},
+        {"command": "pairReview.deleteInlineDraft", "group": "inline@2", "when": "commentController == pair-review && comment == pairReviewDraftComment"},
+        {"command": "pairReview.sendInlineComment", "group": "inline@3", "when": "commentController == pair-review && comment == pairReviewDraftComment"}
+      ],
+      "comments/comment/context": [
+        {"command": "pairReview.saveInlineDraft", "group": "inline@1", "when": "commentController == pair-review && comment == pairReviewDraftComment"},
+        {"command": "pairReview.cancelInlineEdit", "group": "inline@2", "when": "commentController == pair-review && comment == pairReviewDraftComment"}
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:host": "node test/host/runTests.js",
+    "check": "node --check vscode/extension.js && node --check vscode/bridge.js && node --check vscode/inline-comments.js && node --check src/pair_review/media/review.js",
+    "package": "python3 scripts/package.py"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "2.5.2",
+    "jsdom": "26.1.0"
+  }
+}

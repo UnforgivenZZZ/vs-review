@@ -1,0 +1,22 @@
+{
+  "name": "vs-review",
+  "version": "0.4.0",
+  "displayName": "Pair Review MCP",
+  "description": "Review agent-authored candidate files in VS Code before applying them.",
+  "contextFileName": [],
+  "skills": "skills",
+  "mcpServers": {
+    "pair-review": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "${extensionPath}",
+        "pair-review-mcp",
+        "--workspace",
+        "${workspacePath}"
+      ],
+      "timeout": 600000
+    }
+  }
+}

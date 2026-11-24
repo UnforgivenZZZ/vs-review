@@ -1,0 +1,11 @@
+.git/**
+.qwen/**
+.venv/**
+node_modules/**
+test/**
+tests/**
+scripts/**
+**/__pycache__/**
+*.vsix
+*.zip
+uv.lock

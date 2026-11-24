@@ -1,0 +1,11 @@
+.pair-review/
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+node_modules/
+.vscode-test/
+dist/
+*.vsix
+*.zip
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "name": "pair-review-host-driver",
+  "displayName": "Pair Review Host Test Driver",
+  "publisher": "local-tests",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {"vscode": "^1.90.0"},
+  "main": "./index.js",
+  "activationEvents": []
+}
