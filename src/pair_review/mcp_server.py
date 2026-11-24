@@ -48,6 +48,16 @@ def propose(target: str, candidate: str, title: str = "Agent proposal", agent: s
 
 
 @mcp.tool()
+def revise(proposal_id: str, candidate: str, title: str | None = None, agent: str | None = None) -> dict[str, Any]:
+    """Refresh an existing proposal in place while preserving its complete discussion history."""
+    candidate_path = _candidate(candidate)
+    after = core.read_text(candidate_path)
+    if after is None:
+        raise ValueError("Candidate file missing")
+    return core.revise(root(), proposal_id, after, title, agent)
+
+
+@mcp.tool()
 def feedback(proposal_id: str) -> dict[str, Any]:
     """Read only submitted decisions and published comments for a proposal."""
     return core.feedback(root(), proposal_id)

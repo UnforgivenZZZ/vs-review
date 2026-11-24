@@ -59,7 +59,8 @@ function activate(context){
     const file=document.uri.fsPath,root=path.dirname(path.dirname(path.dirname(file)));
     const folder=vscode.workspace.getWorkspaceFolder(document.uri);
     if(!folder||path.resolve(folder.uri.fsPath)!==path.resolve(root))throw new Error('Open the proposal’s project root as a VS Code workspace folder.');
-    const id=path.basename(file,'.dff'),bridge=bridgeFor(root),initial=await bridge.request('load',{id});
+    const id=path.basename(file,'.dff'),bridge=bridgeFor(root);
+    let initial=await bridge.request('load',{id});
     const uriFor=kind=>vscode.Uri.from({scheme:'pair-review',path:`/${id}/${kind}/${initial.path}`,query:JSON.stringify({root,id,kind})});
     const original=uriFor('original'),proposed=uriFor('proposed'),resolved=uriFor('resolved');
     let sourceColumn;
@@ -89,6 +90,11 @@ function activate(context){
      if(disposed||refreshing)return;refreshing=true;
      try{
       const review=await bridge.request('reviewState',{id}),nextFeedback=review.feedback,inlineDrafts=review.inlineDrafts||{},signature=liveSignature(review);
+      if((review.proposalRevision||1)!==(lastReview.proposalRevision||1)){
+       initial=await bridge.request('load',{id});lastReview=review;lastFeedback=nextFeedback;lastInline=signature;
+       panel.webview.html=initial.html;changed.fire(original);changed.fire(proposed);changed.fire(resolved);
+       await inline?.refresh(root,id);return;
+      }
       if(nextFeedback.revision===lastFeedback.revision&&signature===lastInline)return;
       lastInline=signature;
       const known=new Set(lastFeedback.comments.map(comment=>comment.id));
@@ -98,7 +104,7 @@ function activate(context){
       if(replies.length)vscode.window.showInformationMessage(`Pair Review: ${replies.at(-1).author} replied on ${initial.path}`);
      }catch(error){panel.webview.postMessage({type:'error',message:error.message})}finally{refreshing=false}
     };
-    const updates=vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder,`.pair-review/{state/${id}.json,comments/${id}/*.json,activity/${id}.json}`));
+    const updates=vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder,`.pair-review/{proposals/${id}.dff,state/${id}.json,comments/${id}/*.json,activity/${id}.json}`));
     updates.onDidCreate(refresh);updates.onDidChange(refresh);
     const poll=setInterval(refresh,1500);timers.add(poll);
     const onInline=inlineChanged.event(event=>{if(event.root===root&&event.id===id)refresh()});

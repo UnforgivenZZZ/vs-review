@@ -45,10 +45,10 @@ function commentHeader(author,role,badge,meta,thinking=false){
 function renderComments(){
  for(const c of feedback.comments){
   if(document.getElementById('comment-'+c.id))continue;
-  const host=document.getElementById('comments-'+c.hunk);if(!host)continue;
+  const host=document.getElementById('comments-'+c.hunk)||document.getElementById('comments-general');if(!host)continue;
   const role=c.author==='reviewer'?'reviewer':'agent';
-  const item=document.createElement('article');item.className=`comment ${role}`;item.id='comment-'+c.id;item.dataset.role=role;
-  const meta=' · '+c.at+(c.startLine?' · '+c.side+' L'+c.startLine+(c.endLine!==c.startLine?'–'+c.endLine:''):(c.line?' · proposed L'+c.line:''));
+  const item=document.createElement('article');item.className=`comment ${role}`;item.id='comment-'+c.id;item.dataset.role=role;item.dataset.proposalRevision=String(c.proposalRevision||1);
+  const meta=' · revision '+(c.proposalRevision||1)+' · '+c.at+(c.startLine?' · '+c.side+' L'+c.startLine+(c.endLine!==c.startLine?'–'+c.endLine:''):(c.line?' · proposed L'+c.line:''));
   const header=commentHeader(c.author,role,role==='reviewer'?'You · Review':'Agent',meta);
   const text=document.createElement('p');text.textContent=c.body;item.append(header,text);host.append(item);
  }
@@ -56,7 +56,7 @@ function renderComments(){
 function renderActivity(){
  document.querySelectorAll('.activity').forEach(host=>{host.replaceChildren();host.setAttribute('aria-live','polite')});
  for(const event of activity){
-  const host=document.getElementById('activity-'+event.hunk);if(!host)continue;
+  const host=document.getElementById('activity-'+event.hunk)||document.getElementById('activity-general');if(!host)continue;
   const item=document.createElement('article');item.className='comment agent thinking';item.id='activity-'+event.id;item.dataset.role='agent-thinking';
   const header=commentHeader(event.agent,'agent','Thinking',' · updating live',true);
   const text=document.createElement('p');text.textContent=event.summary;item.append(header,text);host.append(item);

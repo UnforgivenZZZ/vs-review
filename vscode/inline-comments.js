@@ -21,7 +21,8 @@ function createInlineComments(vscode,context,{bridgeFor,onChange=()=>{},onSubmit
   const{root,id}=session,review=await bridgeFor(root).request('reviewState',{id}),feedback=review.feedback;
   session.path=feedback.path;session.inlineDrafts=review.inlineDrafts||{};
   const draftIds=new Set(Object.keys(session.inlineDrafts));
-  const items=[...feedback.comments.filter(comment=>comment.threadId),...Object.values(session.inlineDrafts)];
+  const currentRevision=review.proposalRevision||1;
+  const items=[...feedback.comments.filter(comment=>comment.threadId&&(comment.proposalRevision||1)===currentRevision),...Object.values(session.inlineDrafts)];
   const signature=JSON.stringify({items,draftIds:[...draftIds]});if(signature===session.signature)return review;
   session.signature=signature;
   const groups=new Map();

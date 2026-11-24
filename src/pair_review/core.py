@@ -164,6 +164,7 @@ def submit(root: str | Path, target: str, after: str, title: str = "Agent propos
         "title": title,
         "agent": agent,
         "createdAt": _now(),
+        "proposalRevision": 1,
         "before": before,
         "after": after,
         "hunks": hunks,
@@ -179,6 +180,60 @@ def state_path(root: str | Path, proposal_id: str) -> Path:
 
 def fingerprint(proposal: dict[str, Any]) -> str:
     return hashlib.sha256(_json_bytes([proposal["id"], proposal["path"], proposal["before"], proposal["after"]])).hexdigest()
+
+
+def proposal_revision(proposal: dict[str, Any]) -> int:
+    revision = proposal.get("proposalRevision", 1)
+    _assert(isinstance(revision, int) and not isinstance(revision, bool) and revision >= 1, "Invalid proposal revision")
+    return revision
+
+
+def revision_path(root: str | Path, proposal_id: str, revision: int) -> Path:
+    return safe(root, f".pair-review/revisions/{proposal_id}/{revision:06d}.json", True)
+
+
+def revision_state(proposal: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "fingerprint": fingerprint(proposal),
+        "proposalRevision": proposal_revision(proposal),
+        "decisions": {},
+        "drafts": {},
+        "inlineDrafts": {},
+        "publishedComments": copy.deepcopy(previous.get("publishedComments", [])),
+    }
+
+
+def revise(root: str | Path, proposal_id: str, after: str, title: str | None = None, agent: str | None = None) -> dict[str, Any]:
+    proposal = load(root, proposal_id)
+    current_state = state(root, proposal)
+    _assert(isinstance(after, str) and len(after.encode("utf-8")) <= LIMIT and "\0" not in after, "Expected UTF-8 text up to 1 MiB")
+    before = read_text(safe(root, proposal["path"]))
+    hunks = diff(before, after)
+    _assert(bool(hunks), "No changes to propose")
+    previous_revision = proposal_revision(proposal)
+    archive = {"proposalRevision": previous_revision, "proposal": proposal, "state": current_state, "archivedAt": _now()}
+    json_write(revision_path(root, proposal_id, previous_revision), archive)
+    updated = {
+        **proposal,
+        "title": title or proposal["title"],
+        "agent": agent or proposal["agent"],
+        "proposalRevision": previous_revision + 1,
+        "revisedAt": _now(),
+        "before": before,
+        "after": after,
+        "hunks": hunks,
+    }
+    json_write(safe(root, f".pair-review/proposals/{proposal_id}.dff", True), updated)
+    json_write(state_path(root, proposal_id), revision_state(updated, current_state))
+    if activity(root, proposal_id):
+        json_write(activity_path(root, proposal_id), {"version": 1, "proposal": proposal_id, "events": []})
+    return {
+        "id": proposal_id,
+        "file": str(safe(root, f".pair-review/proposals/{proposal_id}.dff", True)),
+        "hunks": [hunk["id"] for hunk in hunks],
+        "proposalRevision": previous_revision + 1,
+        "refreshed": True,
+    }
 
 
 def load(root: str | Path, proposal_id: str) -> dict[str, Any]:
@@ -200,6 +255,7 @@ def load(root: str | Path, proposal_id: str) -> dict[str, Any]:
         "Invalid text",
     )
     _assert(isinstance(proposal["title"], str) and isinstance(proposal["agent"], str), "Invalid metadata")
+    proposal["proposalRevision"] = proposal_revision(proposal)
     safe(root, proposal["path"])
     proposal["hunks"] = diff(proposal["before"], proposal["after"])
     _assert(bool(proposal["hunks"]), "Empty proposal")
@@ -210,8 +266,15 @@ def state(root: str | Path, proposal: dict[str, Any]) -> dict[str, Any]:
     try:
         current_state = json.loads(state_path(root, proposal["id"]).read_text(encoding="utf-8"))
     except FileNotFoundError:
-        current_state = {"fingerprint": fingerprint(proposal), "decisions": {}}
-    _assert(current_state["fingerprint"] == fingerprint(proposal), "Proposal changed after review began; submit a new proposal")
+        current_state = {"fingerprint": fingerprint(proposal), "proposalRevision": proposal_revision(proposal), "decisions": {}}
+    if current_state["fingerprint"] != fingerprint(proposal):
+        state_revision = current_state.get("proposalRevision", 1)
+        _assert(state_revision < proposal_revision(proposal), "Proposal changed after review began; submit a new proposal")
+        archive_file = revision_path(root, proposal["id"], state_revision)
+        archive = json.loads(archive_file.read_text(encoding="utf-8"))
+        _assert(fingerprint(archive["proposal"]) == current_state["fingerprint"], "Revision history does not match review state")
+        current_state = revision_state(proposal, current_state)
+        json_write(state_path(root, proposal["id"]), current_state)
     if current_state.get("transaction"):
         current = read_text(safe(root, proposal["path"]))
         transaction = current_state["transaction"]
@@ -299,6 +362,7 @@ def progress(
     event = {
         "id": previous["id"] if previous else str(uuid.uuid4()),
         "proposal": proposal_id,
+        "proposalRevision": proposal_revision(proposal),
         "hunk": hunk,
         "threadId": thread_id,
         "agent": agent,
@@ -316,7 +380,7 @@ def comment(root: str | Path, proposal_id: str, hunk: str, body: str, author: st
     _assert(hunk == "general" or any(item["id"] == hunk for item in proposal["hunks"]), "Unknown hunk")
     _assert(isinstance(body, str) and bool(body.strip()) and len(body) <= 20_000, "Comment must contain 1–20000 characters")
     _assert(line is None or (isinstance(line, int) and not isinstance(line, bool) and 1 <= line <= len(split_lines(proposal["after"]))), "Invalid proposed line")
-    item = {"id": str(uuid.uuid4()), "proposal": proposal_id, "hunk": hunk, "line": line, "body": body, "author": author, "at": _now()}
+    item = {"id": str(uuid.uuid4()), "proposal": proposal_id, "proposalRevision": proposal_revision(proposal), "hunk": hunk, "line": line, "body": body, "author": author, "at": _now()}
     json_write(safe(root, f".pair-review/comments/{proposal_id}/{item['id']}.json", True), item)
     clear_activity(root, proposal_id, hunk, author)
     return item
@@ -332,10 +396,13 @@ def feedback(root: str | Path, proposal_id: str) -> dict[str, Any]:
             if UUID_RE.fullmatch(file.stem) and file.suffix == ".json":
                 comments.append(json.loads(file.read_text(encoding="utf-8")))
     comments.extend(current_state.get("publishedComments", []))
+    for item in comments:
+        item.setdefault("proposalRevision", 1)
     comments.sort(key=lambda item: (item["at"], item["id"]))
     result = {
         "id": proposal_id,
         "path": proposal["path"],
+        "proposalRevision": proposal_revision(proposal),
         "hunks": [{"id": hunk["id"], "status": current_state["decisions"].get(hunk["id"], "pending")} for hunk in proposal["hunks"]],
         "comments": comments,
         "complete": all(hunk["id"] in current_state["decisions"] for hunk in proposal["hunks"]),
@@ -406,7 +473,7 @@ def submit_review(root: str | Path, proposal_id: str, scope: str = "all") -> dic
                 next_state["decisions"][hunk] = item["decision"]
         if item["body"].strip():
             next_state["publishedComments"].append(
-                {"id": str(uuid.uuid4()), "proposal": proposal_id, "hunk": hunk, "line": item["line"], "body": item["body"], "author": "reviewer", "at": _now()}
+                {"id": str(uuid.uuid4()), "proposal": proposal_id, "proposalRevision": proposal_revision(proposal), "hunk": hunk, "line": item["line"], "body": item["body"], "author": "reviewer", "at": _now()}
             )
         del next_state["drafts"][hunk]
     for key in inline_keys:
@@ -433,7 +500,7 @@ def send_draft_comment(root: str | Path, proposal_id: str, hunk: str) -> dict[st
     current_state = state(root, proposal)
     item = current_state.get("drafts", {}).get(hunk)
     _assert(item is not None and bool(item.get("body", "").strip()), "Write a comment before sending")
-    published = {"id": str(uuid.uuid4()), "proposal": proposal_id, "hunk": hunk, "line": item["line"], "body": item["body"], "author": "reviewer", "at": _now()}
+    published = {"id": str(uuid.uuid4()), "proposal": proposal_id, "proposalRevision": proposal_revision(proposal), "hunk": hunk, "line": item["line"], "body": item["body"], "author": "reviewer", "at": _now()}
     current_state.setdefault("publishedComments", []).append(published)
     if "decision" in item:
         current_state["drafts"][hunk] = {**item, "body": "", "line": None}
@@ -502,6 +569,7 @@ def save_inline_draft(root: str | Path, proposal_id: str, anchor: dict[str, Any]
         **location,
         "id": previous["id"] if previous else str(uuid.uuid4()),
         "proposal": proposal_id,
+        "proposalRevision": proposal_revision(proposal),
         "threadId": thread_id,
         "body": body,
         "author": "reviewer",
@@ -528,6 +596,7 @@ def reply_thread(root: str | Path, proposal_id: str, thread_id: str, body: str, 
     item = {
         "id": str(uuid.uuid4()),
         "proposal": proposal_id,
+        "proposalRevision": parent.get("proposalRevision", 1),
         "threadId": thread_id,
         "hunk": parent["hunk"],
         "side": parent["side"],

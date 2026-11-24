@@ -45,12 +45,18 @@ async function run(){
   await waitFor(async()=>{const live=await bridge.request('reviewState',{id:proposal.id});return live.activity.some(event=>event.summary==='Checking the real host')},'installed host did not publish live activity');
   python('import sys; from pair_review import core; core.reply_thread(".",sys.argv[1],sys.argv[2],"Final host answer","host-test")',proposal.id,threadId);
   await waitFor(async()=>{const live=await bridge.request('reviewState',{id:proposal.id});return live.activity.length===0&&live.feedback.comments.some(comment=>comment.body==='Final host answer')},'formal reply did not clear live activity');
+  python('import sys; from pair_review import core; core.revise(".",sys.argv[1],"REVISED\\ntwo\\nthree\\nfour\\n")',proposal.id);
+  await waitFor(async()=>{const live=await bridge.request('reviewState',{id:proposal.id});return live.proposalRevision===2},'installed host did not refresh the revised proposal');
+  const refreshed=await bridge.request('load',{id:proposal.id});
+  assert.equal(refreshed.proposalRevision,2);assert.ok(refreshed.html.includes('Question from real Extension Host'));assert.ok(refreshed.html.includes('Final host answer'));
+  const reviewTabs=vscode.window.tabGroups.all.flatMap(group=>group.tabs).filter(tab=>tab.input instanceof vscode.TabInputCustom&&tab.input.viewType==='pairReview.proposal');
+  assert.equal(reviewTabs.length,1,'Revision opened a duplicate review tab');
   await bridge.request('draft',{id:proposal.id,hunk:'h1',value:{decision:'accepted',body:'Accept from installed bridge'}});
   assert.equal(fs.readFileSync(path.join(root,'a.txt'),'utf8'),'one\ntwo\nthree\nfour\n');
   await bridge.request('submitReview',{id:proposal.id,scope:'h1'});
  }finally{bridge.dispose()}
- assert.equal(fs.readFileSync(path.join(root,'a.txt'),'utf8'),'ONE\ntwo\nthree\nfour\n');
- const resolved=await vscode.workspace.openTextDocument(uri('resolved'));assert.equal(resolved.getText(),'ONE\ntwo\nthree\nfour\n');
+ assert.equal(fs.readFileSync(path.join(root,'a.txt'),'utf8'),'REVISED\ntwo\nthree\nfour\n');
+ const resolved=await vscode.workspace.openTextDocument(uri('resolved'));assert.equal(resolved.getText(),'REVISED\ntwo\nthree\nfour\n');
  console.log('REAL_VSCODE_EXTENSION_HOST_ACCEPTANCE=PASS');
 }
 module.exports={run};

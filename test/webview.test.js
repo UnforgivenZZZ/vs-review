@@ -110,3 +110,18 @@ test('speaker cards have distinct roles and thinking disappears after the formal
  const css=x.document.querySelector('style').textContent;
  assert.ok(css.includes('.comment.reviewer'));assert.ok(css.includes('.comment.agent'));assert.ok(css.includes('border-left-width: 4px'));
 });
+
+test('comments and replies from every revision remain visible including removed hunk anchors',t=>{
+ const x=setup(t);
+ const oldReview={id:'old-review',hunk:'h99',body:'Review on an old hunk',author:'reviewer',at:'2026-11-24',proposalRevision:1};
+ const oldReply={id:'old-reply',hunk:'h99',body:'Reply on the same old hunk',author:'qwen',at:'2026-11-24',proposalRevision:1};
+ const current={id:'current-reply',hunk:'h1',body:'New revision reply',author:'qwen',at:'2026-11-24',proposalRevision:2};
+ x.update({type:'update',feedback:{...x.feedback,proposalRevision:2,comments:[oldReview,oldReply,current]},activity:[]});
+ const general=x.document.getElementById('comments-general');
+ assert.ok(general.querySelector('#comment-old-review'));assert.ok(general.querySelector('#comment-old-reply'));
+ assert.equal(x.document.getElementById('comment-old-review').dataset.proposalRevision,'1');
+ assert.equal(x.document.getElementById('comment-old-reply').dataset.proposalRevision,'1');
+ assert.equal(x.document.getElementById('comment-current-reply').dataset.proposalRevision,'2');
+ assert.match(x.document.querySelector('.file-count').textContent,/Revision 1/);
+ assert.match(general.textContent,/Review on an old hunk/);assert.match(general.textContent,/Reply on the same old hunk/);
+});
