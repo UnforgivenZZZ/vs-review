@@ -244,3 +244,32 @@ def test_invalid_inline_ranges_and_unpublished_replies_are_rejected(workspace: P
         core.save_inline_draft(workspace, proposal["id"], {"side": "proposed", "startLine": 2, "endLine": 2}, "moved", {"threadId": draft["threadId"]})
     with pytest.raises(ValueError, match="Unknown published"):
         core.reply_thread(workspace, proposal["id"], draft["threadId"], "too early")
+
+
+def test_progress_is_transient_and_replies_clear_only_their_own_scope(workspace: Path):
+    proposal = core.submit(workspace, "a.txt", "ONE\ntwo\nthree\nFOUR\n")
+    revision = core.feedback(workspace, proposal["id"])["revision"]
+    first = core.progress(workspace, proposal["id"], "Checking the first change", "h1", agent="qwen")
+    updated = core.progress(workspace, proposal["id"], "Preparing the first answer", "h1", agent="qwen")
+    second = core.progress(workspace, proposal["id"], "Checking another change", "h2", agent="qwen")
+    assert updated["id"] == first["id"]
+    assert core.feedback(workspace, proposal["id"])["revision"] == revision
+    assert core.read_text(workspace / "a.txt") == "one\ntwo\nthree\nfour\n"
+    core.comment(workspace, proposal["id"], "h1", "First answer", "qwen")
+    assert core.activity(workspace, proposal["id"]) == [second]
+    core.comment(workspace, proposal["id"], "h2", "Reviewer asks about the second change", "reviewer")
+    assert core.activity(workspace, proposal["id"]) == [second]
+    core.comment(workspace, proposal["id"], "h2", "Second answer", "qwen")
+    assert core.activity(workspace, proposal["id"]) == []
+
+
+def test_inline_reply_clears_only_the_matching_thread_activity(workspace: Path):
+    proposal = core.submit(workspace, "a.txt", "new")
+    draft = core.save_inline_draft(workspace, proposal["id"], {"side": "proposed", "startLine": 1, "endLine": 1}, "Question")
+    core.submit_review(workspace, proposal["id"], f"thread:{draft['threadId']}")
+    core.progress(workspace, proposal["id"], "Inspecting this exact line", thread_id=draft["threadId"], agent="qwen")
+    core.progress(workspace, proposal["id"], "Working on the general discussion", agent="qwen")
+    core.reply_thread(workspace, proposal["id"], draft["threadId"], "Answer", "qwen")
+    remaining = core.activity(workspace, proposal["id"])
+    assert len(remaining) == 1
+    assert remaining[0]["hunk"] == "general"

@@ -25,6 +25,9 @@ The MCP server does not expose tools for Accept, Reject, Submit, or modifying re
 
 - Full original, proposed, and submitted-result previews. The submitted result includes only accepted decisions that have been submitted.
 - One immutable candidate snapshot per proposal, with per-hunk Accept, Reject, and Undo.
+- File-centric grouping: one outer group per file, internal hunk IDs hidden from the UI, and a file-scoped Compare full files action on the file bar.
+- Diff syntax colors for keywords, statements, strings, numbers, and comments remain visible over added/removed line backgrounds.
+- Distinct reviewer and agent cards with colored borders, role badges, and live thinking cards that disappear after the corresponding formal reply.
 - Isolation between drafts and submitted feedback, with submission scopes for one hunk, one thread, one comment, or the entire proposal.
 - Inline single-line and multi-line discussions on either the original or proposed side, preserving `threadId`, line ranges, side, and `quotedCode`.
 - Automatic display of agent `reply_thread` responses in the original thread and review panel without refreshing.
@@ -84,6 +87,8 @@ The Skill guides the agent through this workflow:
 | `propose` | Create a single-file proposal from a complete candidate without modifying the source file |
 | `feedback` | Read submitted decisions and published comments |
 | `wait` | Wait for feedback after a specified revision and return `waitStatus` |
+| `progress` | Publish a short live reasoning/work summary without changing feedback or source files |
+| `clear_progress` | Clear an unfinished summary when no formal reply will be sent |
 | `reply` | Reply to a hunk or the general discussion |
 | `reply_thread` | Reply to the exact published inline discussion thread |
 
@@ -91,7 +96,7 @@ The Skill guides the agent through this workflow:
 
 ## Data and boundaries
 
-The implementation uses the `.pair-review/proposals/*.dff`, `state/`, `comments/`, and `candidates/` layout. A `.dff` file is JSON containing the complete original and proposed text, not a unified diff. Add `.pair-review/` to the target project's `.gitignore`.
+The implementation uses the `.pair-review/proposals/*.dff`, `state/`, `comments/`, `activity/`, and `candidates/` layout. A `.dff` file is JSON containing the complete original and proposed text, not a unified diff. Activity events are transient UI updates and do not change the agent feedback revision. Add `.pair-review/` to the target project's `.gitignore`.
 
 The scope matches 0.4.0: UTF-8 text, one file per proposal, and a maximum file size of 1 MiB. Deletion or rename proposals, binary files, permission changes, and multi-file atomic transactions are not supported. Large, complex diffs may fall back to one hunk. This collaboration workflow cannot prevent other processes from writing files directly.
 
